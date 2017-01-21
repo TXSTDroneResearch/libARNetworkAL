@@ -48,11 +48,16 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>
-#include <sys/select.h>
-#include <fcntl.h>
-#include <sys/ioctl.h>
 
 #include <libARSAL/ARSAL.h>
+
+#ifdef HAVE_WINSOCK2_H
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#else
+#include <sys/ioctl.h>
+#include <sys/select.h>
+#endif
 
 #include <libARNetworkAL/ARNETWORKAL_Manager.h>
 #include <libARNetworkAL/ARNETWORKAL_Error.h>
@@ -250,10 +255,17 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Signal(ARNETWORKAL_Manager_t *manager
             ARNETWORKAL_WifiNetworkObject *object = (ARNETWORKAL_WifiNetworkObject *)manager->senderObject;
             if (object->fifo[1] != -1)
             {
+#ifdef _WIN32
+                err = ARSAL_Socket_Send(object->fifo[1], buff, 1, 0);
+#else
                 err = write (object->fifo[1], buff, 1);
                 if (err < 0) {
                     err = errno;
-                    ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "write() error: %d %s", err, strerror(err));
+                }
+#endif
+
+                if (err < 0) {
+                    ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "send error: %d %s", err, strerror(err));
                 }
             }
         }
@@ -262,10 +274,17 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Signal(ARNETWORKAL_Manager_t *manager
             ARNETWORKAL_WifiNetworkObject *object = (ARNETWORKAL_WifiNetworkObject *)manager->receiverObject;
             if (object->fifo[1] != -1)
             {
+#ifdef _WIN32
+                err = ARSAL_Socket_Send(object->fifo[1], buff, 1, 0);
+#else
                 err = write (object->fifo[1], buff, 1);
                 if (err < 0) {
                     err = errno;
-                    ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "write() error: %d %s", err, strerror(err));
+                }
+#endif
+
+                if (err < 0) {
+                    ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "send error: %d %s", err, strerror(err));
                 }
             }
         }
@@ -391,8 +410,13 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Delete (ARNETWORKAL_Manager_t *manage
                 sender->socket = -1;
             }
 
+#ifdef _WIN32
+            ARSAL_Socket_Close(sender->fifo[0]);
+            ARSAL_Socket_Close(sender->fifo[1]);
+#else
             close (sender->fifo[0]);
             close (sender->fifo[1]);
+#endif
 
             if(sender->buffer)
             {
@@ -419,8 +443,13 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Delete (ARNETWORKAL_Manager_t *manage
                 reader->socket = -1;
             }
 
-            close (reader->fifo[0]);
-            close (reader->fifo[1]);
+#ifdef _WIN32
+            ARSAL_Socket_Close(reader->fifo[0]);
+            ARSAL_Socket_Close(reader->fifo[1]);
+#else
+            close(reader->fifo[0]);
+            close(reader->fifo[1]);
+#endif
 
             if(reader->buffer)
             {
@@ -465,10 +494,17 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Connect (ARNETWORKAL_Manager_t *manag
         {
             error = ARNETWORKAL_ERROR_WIFI_SOCKET_CREATION;
         }
+#ifdef _WIN32
+        if (ARSAL_Socket_CreatePair(wifiSender->fifo) != 0)
+        {
+            error = ARNETWORKAL_ERROR_FIFO_INIT;
+        }
+#else
         if (pipe(wifiSender->fifo) != 0)
         {
             error = ARNETWORKAL_ERROR_FIFO_INIT;
         }
+#endif
     }
 
     /** Initialize socket */
@@ -496,11 +532,10 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Connect (ARNETWORKAL_Manager_t *manag
         sendSin.sin_family = AF_INET;
         sendSin.sin_port = htons (port);
 
-        int flags = fcntl(sockfd, F_GETFL, 0);
-        err = fcntl(sockfd, F_SETFL, flags | O_NONBLOCK);
+        err = ARSAL_Socket_SetBlocking(sockfd, 0);
         if (err < 0) {
-            err = errno;
-            ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "fcntl() failed; err=%d", err);
+            ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG,
+                        "ARSAL_Socket_SetBlocking() failed; err=%d", err);
         }
 
         err = ARSAL_Socket_Connect (sockfd, (struct sockaddr*) &sendSin, sizeof (sendSin));
@@ -534,7 +569,6 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Bind (ARNETWORKAL_Manager_t *manager,
     eARNETWORKAL_ERROR error = ARNETWORKAL_OK;
     int err = 0;
     ARNETWORKAL_WifiNetworkObject *wifiReceiver = NULL;
-    int flags = 0;
 
     /** Check parameters */
     if((manager == NULL) || (manager->receiverObject == NULL))
@@ -552,10 +586,17 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Bind (ARNETWORKAL_Manager_t *manager,
         {
             error = ARNETWORKAL_ERROR_WIFI_SOCKET_CREATION;
         }
+#ifdef _WIN32
+        if (ARSAL_Socket_CreatePair(wifiReceiver->fifo) != 0)
+        {
+            error = ARNETWORKAL_ERROR_FIFO_INIT;
+        }
+#else
         if (pipe(wifiReceiver->fifo) != 0)
         {
             error = ARNETWORKAL_ERROR_FIFO_INIT;
         }
+#endif
         wifiReceiver->timeoutSec = timeoutSec;
     }
 
@@ -576,11 +617,10 @@ eARNETWORKAL_ERROR ARNETWORKAL_WifiNetwork_Bind (ARNETWORKAL_Manager_t *manager,
         }
 
         /* set the socket non blocking */
-        flags = fcntl(wifiReceiver->socket, F_GETFL, 0);
-        err = fcntl(wifiReceiver->socket, F_SETFL, flags | O_NONBLOCK);
+        err = ARSAL_Socket_SetBlocking(wifiReceiver->socket, 0);
         if (err < 0) {
-            err = errno;
-            ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "fcntl() failed; err=%d", err);
+            ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG,
+                        "ARSAL_Socket_SetBlocking() failed; err=%d", err);
         }
 
         err = ARSAL_Socket_Bind (wifiReceiver->socket, (struct sockaddr*)&recvSin, sizeof (recvSin));
@@ -928,7 +968,11 @@ eARNETWORKAL_MANAGER_RETURN ARNETWORKAL_WifiNetwork_Receive(ARNETWORKAL_Manager_
         {
             // If the fifo is ready for a read, dump bytes from it (so it won't be ready next time)
             char dump[10];
+#ifdef _WIN32
+            err = recv(receiverObject->fifo[0], &dump, 10, 0);
+#else
             err = read (receiverObject->fifo[0], &dump, 10);
+#endif
             if (err < 0) {
                 err = errno;
                 ARSAL_PRINT(ARSAL_PRINT_ERROR, ARNETWORKAL_WIFINETWORK_TAG, "read() failed; err=%d", err);
@@ -1223,9 +1267,6 @@ static void ARNETWORKAL_WifiNetwork_FlushReceiveSocket (ARNETWORKAL_Manager_t *m
 
 static int ARNETWORKAL_WifiNetwork_GetAvailableSendSize (ARNETWORKAL_Manager_t *manager, ARNETWORKAL_WifiNetworkObject *senderObject)
 {
-    int currentBytesInSocket;
-    int err;
-    int sockfd = senderObject->socket;
     int buffSize = senderObject->socketBufferSize;
     int available = -1;
     if (buffSize < 0)
@@ -1233,6 +1274,10 @@ static int ARNETWORKAL_WifiNetwork_GetAvailableSendSize (ARNETWORKAL_Manager_t *
         return -1;
     }
 
+#ifndef _WIN32
+    int sockfd = senderObject->socket;
+    int currentBytesInSocket;
+    int err;
     err = ioctl(sockfd, TIOCOUTQ, &currentBytesInSocket);
     if (err >= 0)
     {
@@ -1255,6 +1300,10 @@ static int ARNETWORKAL_WifiNetwork_GetAvailableSendSize (ARNETWORKAL_Manager_t *
             senderObject->socketBufferSize = -1;
         }
     }
+#else
+    /* unsupported on windows */
+    senderObject->socketBufferSize = -1;
+#endif
 
     return available;
 }

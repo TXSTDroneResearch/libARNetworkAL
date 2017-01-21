@@ -34,7 +34,6 @@
 #include <string.h>
 #include <stddef.h>
 #include <errno.h>
-#include <sys/uio.h>
 
 #ifdef BUILD_LIBMUX
 
@@ -42,6 +41,11 @@
 #include <libpomp.h>
 #include <libmux.h>
 #include <libARNetworkAL/ARNETWORKAL_Manager.h>
+
+#ifdef HAVE_SYS_UIO_H
+#include <sys/uio.h>
+#endif
+
 #include "ARNETWORKAL_MuxNetwork.h"
 
 

@@ -314,7 +314,9 @@ void ARNETWORKAL_Manager_Delete (ARNETWORKAL_Manager_t **manager)
             if ((*manager)->dumpFile != NULL)
             {
                 fflush ((*manager)->dumpFile);
+#ifndef _WIN32
                 fsync (fileno ((*manager)->dumpFile));
+#endif
                 fclose ((*manager)->dumpFile);
             }
             free (*manager);

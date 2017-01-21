@@ -57,8 +57,11 @@ typedef enum
  * @brief Internal media-independant frame representation used by the ARNETWORKAL_Manager.
  * @warning The actual format of the frames exchanged on the network may differ.
  */
-typedef struct
-{
+#if defined(_MSC_VER) || defined(__MINGW__)
+#pragma pack(push, 1)
+#endif
+
+typedef struct {
     uint8_t type; /**< frame type eARNETWORK_FRAME_TYPE */
     uint8_t id; /**< identifier of the buffer sending the frame */
     uint8_t seq; /**< sequence number of the frame */
@@ -66,9 +69,13 @@ typedef struct
     uint8_t *dataPtr; /**< pointer on the data of the frame */
 }
 // Doxygen does not like the __attribute__ tag
-#ifndef DOXYGEN
+#if !defined(DOXYGEN) && defined(__GNUC__)
 __attribute__((__packed__))
 #endif
 ARNETWORKAL_Frame_t;
+
+#if defined(_MSC_VER) || defined(__MINGW__)
+#pragma pack(pop)
+#endif
 
 #endif /** _ARNETWORKAL_FRAME_H_ */
